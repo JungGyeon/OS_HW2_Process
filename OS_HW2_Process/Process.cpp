@@ -2,6 +2,7 @@
 #include <memory>
 #include <string>
 #include <list>
+#include <algorithm>
 
 using namespace std;
 
@@ -28,28 +29,59 @@ class Stack {
 private:
     shared_ptr<Node> top;
     shared_ptr<Node> bottom;
+    int totalProcesses;
+    int totalNodes;
+
+    void split_n_merge(shared_ptr<Node> node) {
+        while (node) {
+            int threshold = totalProcesses / totalNodes; // 전체 프로세스 개수 / 스택 노드 수
+            if (node->processList.size() > threshold) {
+                auto it = node->processList.begin();
+                advance(it, node->processList.size() / 2); 
+                list<Process> splitList(it, node->processList.end());
+                node->processList.erase(it, node->processList.end());
+
+                shared_ptr<Node> newNode = make_shared<Node>();
+                newNode->processList = splitList;
+                newNode->next = node->next;
+                node->next = newNode;
+                totalNodes++;
+
+                split_n_merge(newNode);
+            }
+            node = node->next;
+        }
+    }
 
 public:
-    Stack() : top(nullptr), bottom(nullptr) {}
+    Stack() : top(nullptr), bottom(nullptr), totalProcesses(0), totalNodes(0) {}
 
     void enqueue(Process process) {
         if (!top) {
             // 스택이 비어 있는 경우 새로운 노드를 top과 bottom으로 설정
             top = make_shared<Node>();
             bottom = top;
-            top->processList.push_back(process);
+            totalNodes++;
         }
-        else if (process.type == FOREGROUND) {
+        if (process.type == FOREGROUND) {
             // foreground 프로세스를 top 리스트 끝에 삽입
             top->processList.push_back(process);
         }
         else {
             // background 프로세스를 bottom 리스트 끝에 삽입
-            shared_ptr<Node> newNode = make_shared<Node>();
-            newNode->processList.push_back(process);
-            bottom->next = newNode;
-            bottom = newNode;
+            if (bottom->processList.empty()) {
+                bottom->processList.push_back(process);
+            }
+            else {
+                shared_ptr<Node> newNode = make_shared<Node>();
+                newNode->processList.push_back(process);
+                bottom->next = newNode;
+                bottom = newNode;
+                totalNodes++;
+            }
         }
+        totalProcesses++;
+        split_n_merge(top);
     }
 
     Process dequeue() {
@@ -60,12 +92,14 @@ public:
         // stack top 리스트의 첫 번째 프로세스 가져오기
         Process process = top->processList.front();
         top->processList.pop_front();
+        totalProcesses--;
 
         // 프로세스가 종료된 경우 리스트 노드 삭제
         if (top->processList.empty()) {
             // top 리스트가 비어 있으면 스택에서 해당 노드를 제거
             shared_ptr<Node> oldTop = top;
             top = top->next;
+            totalNodes--;
             if (!top) {
                 bottom = nullptr; // 스택이 완전히 비어 있는 경우
             }
@@ -98,6 +132,7 @@ public:
                     shared_ptr<Node> newTop = make_shared<Node>();
                     newTop->next = top;
                     top = newTop;
+                    totalNodes++;
                 }
 
                 // 현재 리스트가 비어 있으면 해당 스택 노드 제거
@@ -108,6 +143,7 @@ public:
                     else {
                         top = nullptr;
                         bottom = nullptr;
+                        totalNodes--;
                     }
                 }
 
@@ -147,7 +183,7 @@ int main() { // test
     cout << "Dequeued process ID: " << stack.dequeue().id << endl;
     stack.printStack();
 
-    stack.promote(); // promote 호출
+    stack.promote();
 
     cout << "Stack after promotion:" << endl;
     stack.printStack();
